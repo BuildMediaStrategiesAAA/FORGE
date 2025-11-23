@@ -49,8 +49,10 @@ export function JobDialog({ open, onOpenChange, job, onSave }: JobDialogProps) {
         start_date: startDate || undefined,
         expected_end_date: expectedEndDate || undefined,
       });
+      onOpenChange(false);
     } catch (error) {
       console.error('Failed to save job:', error);
+      alert(`Failed to save job: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }

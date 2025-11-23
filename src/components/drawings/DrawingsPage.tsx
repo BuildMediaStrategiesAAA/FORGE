@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Camera, Upload, Image as ImageIcon, X, RotateCw, Download, Save, Settings, Trash2 } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, X, Download, Save, Settings, Trash2 } from 'lucide-react';
 import { uploadPhoto, getPhotosForJob, getPhotoUrl, deletePhoto, type Photo } from '../../services/photos.service';
 import { getDimensionsForJob, upsertDimensions } from '../../services/dimensions.service';
+import { getLatestModel, createModel } from '../../services/scaffold.service';
+import { generateDraftModelFromDims } from '../../lib/scaffold/generator';
+import { estimateLoadClass } from '../../lib/scaffold/generator';
+import type { ScaffoldGraph } from '../../lib/scaffold/model';
+import { Scaffold2DElevation } from './Scaffold2DElevation';
+import { Scaffold3DModel } from './Scaffold3DModel';
 
 interface DrawingsPageProps {
   jobId: string | null;
@@ -19,13 +25,28 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [scaffoldGraph, setScaffoldGraph] = useState<ScaffoldGraph | null>(null);
 
   useEffect(() => {
     if (jobId) {
       loadPhotos();
       loadDimensions();
+      loadScaffoldModel();
     }
   }, [jobId]);
+
+  async function loadScaffoldModel() {
+    if (!jobId) return;
+    try {
+      const model = await getLatestModel(jobId);
+      if (model) {
+        setScaffoldGraph(model.model_json);
+        setShowOutput(true);
+      }
+    } catch (error) {
+      console.error('Failed to load scaffold model:', error);
+    }
+  }
 
   async function loadPhotos() {
     if (!jobId) return;
@@ -125,21 +146,48 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
     }
   }
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    if (!jobId) return;
+
+    const height = parseFloat(dimensions.height);
+    const width = parseFloat(dimensions.width);
+    const length = parseFloat(dimensions.length);
+
+    if (!height || !width || !length) {
+      alert('Please enter all dimensions');
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationStep(0);
 
-    const interval = setInterval(() => {
-      setGenerationStep((prev) => {
-        if (prev >= 2) {
-          clearInterval(interval);
-          setIsGenerating(false);
-          setShowOutput(true);
-          return prev;
-        }
-        return prev + 1;
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setGenerationStep(1);
+
+      const graph = generateDraftModelFromDims({
+        length_m: width,
+        height_m: height,
+        lift_m: length,
+        bay_length_m: 2.0
       });
-    }, 1000);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setGenerationStep(2);
+
+      const loadClass = estimateLoadClass(graph);
+      await createModel(jobId, graph, loadClass);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setScaffoldGraph(graph);
+      setIsGenerating(false);
+      setShowOutput(true);
+    } catch (error) {
+      console.error('Failed to generate scaffold model:', error);
+      setIsGenerating(false);
+      alert('Failed to generate scaffold model');
+    }
   };
 
   const handleRemoveImage = () => {
@@ -391,37 +439,24 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
               <div className="neumorphic-card p-6">
                 <h3 className="text-white font-bold text-lg mb-4">2D Elevation View</h3>
                 <div className="bg-[#0d0d0d] rounded-lg aspect-[3/2] flex items-center justify-center border border-[#2d2d2d]">
-                  <svg viewBox="0 0 300 200" className="w-full h-full p-4">
-                    <rect x="50" y="20" width="200" height="160" fill="none" stroke="#667eea" strokeWidth="2" />
-                    <line x1="50" y1="60" x2="250" y2="60" stroke="#667eea" strokeWidth="1" />
-                    <line x1="50" y1="100" x2="250" y2="100" stroke="#667eea" strokeWidth="1" />
-                    <line x1="50" y1="140" x2="250" y2="140" stroke="#667eea" strokeWidth="1" />
-                    <line x1="90" y1="20" x2="90" y2="180" stroke="#667eea" strokeWidth="1" />
-                    <line x1="130" y1="20" x2="130" y2="180" stroke="#667eea" strokeWidth="1" />
-                    <line x1="170" y1="20" x2="170" y2="180" stroke="#667eea" strokeWidth="1" />
-                    <line x1="210" y1="20" x2="210" y2="180" stroke="#667eea" strokeWidth="1" />
-                  </svg>
+                  {scaffoldGraph ? (
+                    <Scaffold2DElevation graph={scaffoldGraph} />
+                  ) : (
+                    <p className="text-[#666] text-sm">Generate a design to see the elevation</p>
+                  )}
                 </div>
               </div>
 
               <div className="neumorphic-card p-6">
                 <h3 className="text-white font-bold text-lg mb-4">3D Interactive Model</h3>
-                <div className="bg-[#0d0d0d] rounded-lg aspect-[3/2] flex items-center justify-center border border-[#2d2d2d] relative">
-                  <div className="text-center">
-                    <div className="w-32 h-32 mx-auto mb-4 perspective-1000">
-                      <div className="w-full h-full relative preserve-3d animate-[spin_8s_linear_infinite]">
-                        <div className="absolute inset-0 border-2 border-[#667eea] bg-[#667eea]/10"></div>
-                      </div>
+                <div className="bg-[#0d0d0d] rounded-lg aspect-[3/2] border border-[#2d2d2d] relative overflow-hidden">
+                  {scaffoldGraph ? (
+                    <Scaffold3DModel graph={scaffoldGraph} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <p className="text-[#666] text-sm">Generate a design to see the 3D model</p>
                     </div>
-                    <div className="flex gap-2 justify-center">
-                      <button className="neumorphic-button p-2 text-[#e5e5e5] hover:text-white">
-                        <RotateCw className="w-4 h-4" />
-                      </button>
-                      <button className="neumorphic-button p-2 text-[#e5e5e5] hover:text-white">
-                        <Settings className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 

@@ -8,6 +8,9 @@ import { estimateLoadClass } from '../../lib/scaffold/generator';
 import type { ScaffoldGraph } from '../../lib/scaffold/model';
 import { Scaffold2DElevation } from './Scaffold2DElevation';
 import { Scaffold3DModel } from './Scaffold3DModel';
+import { takeoffFromGraph } from '../../lib/scaffold/takeoff';
+import { saveTakeoff } from '../../services/materials.service';
+import { supabase } from '../../lib/supabase';
 
 interface DrawingsPageProps {
   jobId: string | null;
@@ -147,14 +150,8 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
   }
 
   const handleGenerate = async () => {
-    if (!jobId) return;
-
-    const height = parseFloat(dimensions.height);
-    const width = parseFloat(dimensions.width);
-    const length = parseFloat(dimensions.length);
-
-    if (!height || !width || !length) {
-      alert('Please enter all dimensions');
+    if (!jobId) {
+      alert('Select a job first');
       return;
     }
 
@@ -165,10 +162,17 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
       await new Promise(resolve => setTimeout(resolve, 500));
       setGenerationStep(1);
 
+      const dims = await getDimensionsForJob(jobId);
+      if (!dims || !dims.length_m || !dims.height_m || !dims.lift_m) {
+        alert('Enter dimensions before generating');
+        setIsGenerating(false);
+        return;
+      }
+
       const graph = generateDraftModelFromDims({
-        length_m: width,
-        height_m: height,
-        lift_m: length,
+        length_m: dims.length_m,
+        height_m: dims.height_m,
+        lift_m: dims.lift_m,
         bay_length_m: 2.0
       });
 
@@ -176,17 +180,24 @@ export function DrawingsPage({ jobId }: DrawingsPageProps) {
       setGenerationStep(2);
 
       const loadClass = estimateLoadClass(graph);
-      await createModel(jobId, graph, loadClass);
+      const newModel = await createModel(jobId, graph, loadClass, supabase);
+
+      const takeoffLines = takeoffFromGraph(graph);
+      await saveTakeoff(newModel.id, takeoffLines, supabase);
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      setScaffoldGraph(graph);
+      const latestModel = await getLatestModel(jobId, supabase);
+      if (latestModel) {
+        setScaffoldGraph(latestModel.model_json);
+      }
+
       setIsGenerating(false);
       setShowOutput(true);
     } catch (error) {
       console.error('Failed to generate scaffold model:', error);
       setIsGenerating(false);
-      alert('Failed to generate scaffold model');
+      alert(`Failed to generate scaffold model: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

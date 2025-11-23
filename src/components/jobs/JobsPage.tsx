@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Briefcase, Plus, MapPin, Calendar, MoreVertical, Edit, Trash } from 'lucide-react';
+import { Briefcase, Plus, MapPin, Calendar, MoreVertical, Edit, Trash, Image } from 'lucide-react';
 import { getJobs, createJob, updateJob, deleteJob, type Job } from '../../services/jobs.service';
 import { JobDialog } from './JobDialog';
 
 type FilterTab = 'all' | 'active' | 'planning' | 'completed';
 
-export function JobsPage() {
+interface JobsPageProps {
+  onSelectJob?: (jobId: string) => void;
+}
+
+export function JobsPage({ onSelectJob }: JobsPageProps = {}) {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -170,6 +174,16 @@ export function JobsPage() {
                   </button>
                   {showActions === job.id && (
                     <div className="absolute right-0 mt-2 w-48 neumorphic-card border border-[#2d2d2d] bg-[#1a1a1a] rounded-lg overflow-hidden z-10">
+                      <button
+                        onClick={() => {
+                          if (onSelectJob) onSelectJob(job.id);
+                          setShowActions(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-3 text-[#e5e5e5] hover:bg-[#252525] transition-colors"
+                      >
+                        <Image className="w-4 h-4" />
+                        Photos & Dimensions
+                      </button>
                       <button
                         onClick={() => openEditDialog(job)}
                         className="w-full flex items-center gap-2 px-4 py-3 text-[#e5e5e5] hover:bg-[#252525] transition-colors"

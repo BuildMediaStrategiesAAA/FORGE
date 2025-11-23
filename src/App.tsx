@@ -18,6 +18,7 @@ const MOCK_USER = {
 function App() {
   const [user] = useState<any>(MOCK_USER);
   const [activePage, setActivePage] = useState('dashboard');
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const handleLogout = async () => {
     console.log('Logout clicked (disabled in dev mode)');
@@ -38,9 +39,9 @@ function App() {
           <main className="pt-24">
             <div className="max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8">
               {activePage === 'dashboard' && <DashboardPage />}
-              {activePage === 'jobs' && <JobsPage />}
+              {activePage === 'jobs' && <JobsPage onSelectJob={(jobId) => { setSelectedJobId(jobId); setActivePage('drawings'); }} />}
               {activePage === 'equipment' && <EquipmentPage />}
-              {activePage === 'drawings' && <DrawingsPage />}
+              {activePage === 'drawings' && <DrawingsPage jobId={selectedJobId} />}
               {activePage === 'gangs' && <GangsPage />}
             </div>
           </main>
